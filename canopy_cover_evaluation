@@ -1,0 +1,216 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Extract marine animal forest cover from planar picture
+%%%% written by Nolwenn PAGES - LECOB - January 2025
+%%%% modified - April 2025
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%%% chemin : path to access the directory containing the series of calibrated pictures
+%%%% strel_size : radius in pixel of the morphing function used to average background (should be bigger than the size of the object the routine should detect)
+%%%% taille_min : minimum number of pixels used to threshold any detected object after binarization
+%%%% gray_level : upper value of the range to amplify
+%%%% connectivite : connectivity value required in selected object after binarization. It may have the following scalar values:  
+%%        4     two-dimensional four-connected neighborhood
+%%        8     two-dimensional eight-connected neighborhood
+
+%%%% S: surface of the total picture analyzed (m^2)
+%%%% surface_obj : surface of the all identified objects (m^2)
+%%%% scale_x/scale_y : scales in metric unit per pixel along x (horizontal in rotated image) and y (vertical) axes 
+%%%% rgb2 : image with identified objects
+%%%% num = number of connected objects
+
+function [S,surface_obj,label,scale_x,scale_y,rgb2,num]=canopy_cover_evaluation(chemin,strel_size,taille_min,gray_level,connectivite)
+
+I = imread(chemin);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Scale set up %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%Plot the picture
+subplot(1,1,1)
+image(I); axis image
+
+pause
+%%Set scale
+
+%id_orientation = input('Select scale orientation (1: Horizontal / 2: Vertical) and click with the mouse on two points that defines the scale : ');
+x_y_scale = input('Can you measure two different x and y scales ?(yes:1 / no:0):');
+%x_y_scale = 1
+
+if(x_y_scale == 0)
+    image(I); axis image
+    dimension_scale = ginput(2);
+    disp(dimension_scale)
+    dx = sqrt((dimension_scale(2,1)-dimension_scale(1,1))^2 + (dimension_scale(2,2) - dimension_scale(1,2))^2);
+%%Dimension of the scale
+    pause    
+    scale_size = input('Scale size in metric units (m) : ');
+    scale_x = (scale_size/dx)
+    scale_y = scale_x
+    
+    ratio_xy = ''
+ 
+else 
+    %% X scale
+    input('First step: x scale (horizontal)')
+    dimension_scale_x = ginput(2);
+    dx = sqrt((dimension_scale_x(2,1)-dimension_scale_x(1,1))^2 + (dimension_scale_x(2,2) - dimension_scale_x(1,2))^2);
+    pause
+    %%Dimension of the scale
+    scale_size_x = input('Scale size in metric units (m) : ');
+    scale_x = (scale_size_x/dx)
+    
+    %% Y scale
+    input('Second step: y scale (vertical)')
+    dimension_scale_y = ginput(2);
+    dy = sqrt((dimension_scale_y(2,1)-dimension_scale_y(1,1))^2 + (dimension_scale_y(2,2) - dimension_scale_y(1,2))^2);
+    pause
+    %%Dimension of the scale
+    scale_size_y = input('Scale size in metric units (m) : ');
+    scale_y = (scale_size_y/dy)
+    
+    ratio_xy = scale_x / scale_y
+end
+    
+%if (id_orientation==1)
+%%% horizontal ratio: m/pix
+%scale_x = (scale_size/dx)
+%scale_y = scale_x
+%elseif (id_orientation==2)
+ %%% vertical ratio: m/pix
+%scale_y = (scale_size/dy)
+%scale_x = scale_y
+%end
+
+sprintf('Horizontal scale (cm/px):%30s',scale_x*100);
+sprintf('Vertical scale (cm/px):%30s',scale_y*100);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Picture crop %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+f1 = figure(1);
+image(I); axis image
+%I=imrotate(I,87);S
+input('Click with the mouse on the lower left and upper right corners of the area that will be analyzed on the image ');
+Coord = ginput(2);
+llx = floor(Coord(1,1)); %xmin
+lly = floor(Coord(1,2)); %ymin
+urx = ceil(Coord(2,1)); %xmax
+ury = ceil(Coord(2,2)); %ymax
+
+%% total surface of the picture
+S=abs((urx-llx)*scale_x*(ury-lly)*scale_y);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Color plan choice%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+imagelist1 = {I I(ury:lly,llx:urx,1) I(ury:lly,llx:urx,2) I(ury:lly,llx:urx,3)};
+figure
+montage(imagelist1)
+
+pause
+
+color_plan_chosen = input('Select one background color (1: red / 2: green / 3: blue): ');
+image_recadre = I(ury:lly,llx:urx,color_plan_chosen);
+
+%%%%%%%% /!\ the canopy should be lighter than the background %%%%%%%%%%%%%%
+inversion_BW = input('Is the canopy darker than background (YES ->1 / NO -> 0) ? ');
+
+if(inversion_BW==1)
+image_recadreng  = double(255-image_recadre)/255.0;
+elseif (inversion_BW==0)
+image_recadreng  = double(image_recadre)/255.0;
+end 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Set a uniform background %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+background = imopen(image_recadreng,strel('disk',strel_size));
+%background = mean(image_recadreng,'all')*ones(size(image_recadreng),'like',image_recadreng);
+imshow(background)
+pause
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Remove the background %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+I2 = image_recadreng - background;
+%I2 = image_recadreng
+%imshow(I2)
+%pause
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Enhance the contrast %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+I3 = imadjust(I2,[0 gray_level],[0 1],3);
+%imshow(I3)
+%pause
+
+if(inversion_BW==1)
+imagelist2 = {imadjust(I2,[0 0.4],[0 1],3) imadjust(I2,[0 0.6],[0 1],3) imadjust(I2,[0 0.8],[0 1],3) I3};
+elseif (inversion_BW==0)
+imagelist2 = {imadjust(I2,[0 0.4],[0 1],3) imadjust(I2,[0 0.5],[0 1],3) imadjust(I2,[0 0.6],[0 1],3) I3};
+end 
+figure
+montage(imagelist2)
+
+pause
+'gray level:'
+gray_level
+
+if(inversion_BW==1)
+gray_level_chosen = input('Select one gray scale (tl = 0.4 / tr = 0.6 / bl = 0.8 / br = gray_level): ');
+elseif (inversion_BW==0)
+gray_level_chosen = input('Select one gray scale (tl = 0.4 / tr = 0.5 / bl = 0.6 / br = gray_level): ');
+end 
+
+I3 = imadjust(I2,[0 gray_level_chosen],[0 1],3);
+I3_darker = imadjust(I2,[0 gray_level_chosen+0.05],[0 1],3);
+if(gray_level_chosen-0.05 < 0.01)
+    I3_lighter = imadjust(I2,[0 0.01],[0 1],3);
+else
+I3_lighter = imadjust(I2,[0 gray_level_chosen-0.05],[0 1],3);
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Set in grey levels %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+level = graythresh(I3);
+level_darker = graythresh(I3_darker);
+level_lighter = graythresh(I3_lighter);
+
+I4 = im2bw(I3,level);
+I4_darker = im2bw(I3_darker,level_darker);
+I4_lighter = im2bw(I3_lighter,level_lighter);
+
+%imshow(I4)
+pause
+I5 = bwareaopen(I4,taille_min,connectivite);
+I5_darker = bwareaopen(I4_darker,taille_min,connectivite);
+I5_lighter = bwareaopen(I4_lighter,taille_min,connectivite);
+
+                                                              
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Objects identification %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+[label_gray_scale,num1] = bwlabel(I5,connectivite);
+[label_darker,num2] = bwlabel(I5_darker,connectivite);
+[label_lighter,num3] = bwlabel(I5_lighter,connectivite);
+
+rgb2 = label2rgb(bwlabel(label_gray_scale,connectivite), 'spring', 'c', 'shuffle');
+rgb2_darker = label2rgb(bwlabel(label_darker,connectivite), 'spring', 'c', 'shuffle');
+rgb2_lighter = label2rgb(bwlabel(label_lighter,connectivite), 'spring', 'c', 'shuffle');
+
+imagelist3 = {rgb2_darker rgb2 rgb2_lighter I};
+figure
+montage(imagelist3)
+
+pause
+
+label_chosen = input('Choose one (1,2,3) : ');
+
+if(label_chosen==1)
+label = label_darker;
+num = num2;
+imshow(rgb2_darker)
+gray_level_chosen = gray_level_chosen + 0.05
+elseif (label_chosen==3)
+label  = label_lighter;
+num = num3;
+imshow(rgb2_lighter)
+gray_level_chosen = gray_level_chosen - 0.05
+else 
+label = label_gray_scale;
+num = num1;
+imshow(rgb2)
+end 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Measure the objects  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+s = regionprops(label, 'area');
+inter = cat(1, s.Area);
+surface_obj=sum(inter)*scale_x*scale_y
