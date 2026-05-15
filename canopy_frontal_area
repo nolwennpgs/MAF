@@ -1,0 +1,313 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Function used to extract branche surface and length from frontal picture
+%%%% written by Nolwenn PAGES, Amandine JAUSIONS, Katell GUIZIEN - LECOB - May 2025
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%%% chemin : path to access the directory containing the series of calibrated pictures
+%%%% plan_couleur : choice for selecting the image colour most appropriate to detect the gorgonian
+%%%% format_video : image format selected on camera (pixel distorsion)
+%%%% inversion_BW : 0 if object are lighter than background / 1 if object are darker than background
+%%%% strel_size : radius in pixel of the morphing function used to average background (should be bigger than the size of the object the routine should detect)
+%%%% taille_min : minimum number of pixels used to threshold any detected object after binarization
+%%%% gray_level : upper value of the range to amplify
+%%%% connectivite : connectivity value required in selected object after binarization. It may have the following scalar values:  
+%%        4     two-dimensional four-connected neighborhood
+%%        8     two-dimensional eight-connected neighborhood
+%%%% scale_orient : orientation of the scale on the picture (1: horizontal, 2: vertical)
+%%%% scale_size : length of the scale on the picture in the length unit you chose 
+%%%% surface_obj : surface of the first object
+%%%% surface: surface of all objects
+%%%% scale_x/scale_y : scales in metric unit per pixel along x (horizontal in rotated image) and y (vertical) axes 
+%%%% S = surface de la zone analysée
+
+function [S,surface_obj,label,height_colony,height_from_substrate_colony,width_colony,scale_x,scale_y,rgb2,num]=Extract_colony_surface_1605(chemin,strel_size,taille_min,gray_level,connectivite)
+
+I = imread(chemin);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Definir l'echelle%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%Afficher l'image sur un axe
+subplot(1,1,1)
+image(I); axis image
+
+pause
+%%Definir l'echelle
+
+%id_orientation = input('Select scale orientation (1: Horizontal / 2: Vertical) and click with the mouse on two points that defines the scale : ');
+x_y_scale = input('Can you measure two different x and y scales ?(yes:0 / no:1):');
+
+if(x_y_scale == 1)
+    image(I); axis image
+    dimension_scale = ginput(2);
+    disp(dimension_scale)
+    dx = sqrt((dimension_scale(2,1)-dimension_scale(1,1))^2 + (dimension_scale(2,2) - dimension_scale(1,2))^2);
+%%Demander à l'utilisateur les dimensions de l'échelle en cm
+    pause    
+    scale_size = input('Scale size in metric units (m) : ');
+    scale_x = (scale_size/dx)
+    scale_y = scale_x
+    
+    ratio_xy = ''
+ 
+else 
+    %% X scale
+    input('First step: x scale (horizontal)')
+    dimension_scale_x = ginput(2);
+    dx = sqrt((dimension_scale_x(2,1)-dimension_scale_x(1,1))^2 + (dimension_scale_x(2,2) - dimension_scale_x(1,2))^2);
+    pause
+    %%Demander à l'utilisateur les dimensions de l'échelle en cm
+    scale_size_x = input('Scale size in metric units (m) : ');
+    scale_x = (scale_size_x/dx)
+    
+    %% Y scale
+    input('Second step: y scale (vertical)')
+    dimension_scale_y = ginput(2);
+    dy = sqrt((dimension_scale_y(2,1)-dimension_scale_y(1,1))^2 + (dimension_scale_y(2,2) - dimension_scale_y(1,2))^2);
+    pause
+    %%Demander à l'utilisateur les dimensions de l'échelle en cm
+    scale_size_y = input('Scale size in metric units (m) : ');
+    scale_y = (scale_size_y/dy)
+    
+    ratio_xy = scale_x / scale_y
+end
+
+sprintf('Echelle horizontale(cm/px):%30s',scale_x*100);
+sprintf('Echelle verticale(cm/px):%30s',scale_y*100);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Recadrer l'image%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+f1 = figure(1);
+image(I); axis image
+%I=imrotate(I,87);S
+input('Click with the mouse on the lower left and upper right corners of the area that will be analyzed on the image ');
+Coord = ginput(2);
+llx = floor(Coord(1,1)); %xmin
+lly = floor(Coord(1,2)); %ymin
+urx = ceil(Coord(2,1)); %xmax
+ury = ceil(Coord(2,2)); %ymax
+
+%% surface de la zone analysée
+S=abs((urx-llx)*scale_x*(ury-lly)*scale_y);
+
+%%%%%%%% ATTENTION : les objets recherches doivent etre blancs %%%%%%%%%%%%%%
+
+pause
+
+imagelist1 = {I I(ury:lly,llx:urx,1) I(ury:lly,llx:urx,2) I(ury:lly,llx:urx,3)};
+figure
+montage(imagelist1)
+
+pause
+
+plan_couleur_chosen = input('Select one background color (1: red / 2: green / 3: blue): ');
+image_recadre = I(ury:lly,llx:urx,plan_couleur_chosen);
+
+inversion_BW = input('Is the canopy darker than background (YES ->1 / NO -> 0) ? ');
+
+if(inversion_BW==1)
+image_recadreng  = double(255-image_recadre)/255.0;
+elseif (inversion_BW==0)
+image_recadreng  = double(image_recadre)/255.0;
+end 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Calculer la hauteur de la colonie %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+image(I); axis image
+input('Click with the mouse to select 4 points defining the colonie height ');
+
+[x_branch, y_branch] = ginput(4);  % Click 4 points on the image
+
+% Calculate the distance between each pair of consecutive points
+dist1 = sqrt(((x_branch(2) - x_branch(1))*scale_x)^2 + ((y_branch(2) - y_branch(1))*scale_y)^2);  % Distance between point 1 and point 2
+dist2 = sqrt(((x_branch(3) - x_branch(2))*scale_x)^2 + ((y_branch(3) - y_branch(2))*scale_y)^2);  % Distance between point 2 and point 3
+dist3 = sqrt(((x_branch(4) - x_branch(3))*scale_x)^2 + ((y_branch(4) - y_branch(3))*scale_y)^2);  % Distance between point 3 and point 4
+
+% Sum the distances to get the total length of the line
+height_colony = dist1 + dist2 + dist3;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Calculer la hauteur depuis le substrat %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+image(I); axis image
+input('Click with the mouse to select 2 points defining the colonie height from the substrate ');
+
+[x_branch, y_branch] = ginput(2);  % Click 2 points on the image
+
+% Calculate the distance between each pair of consecutive points
+height_from_substrate_colony = sqrt(((x_branch(2) - x_branch(1))*scale_x)^2 + ((y_branch(2) - y_branch(1))*scale_y)^2);  % Distance between point 1 and point 2
+
+%%pause
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Calculer la largeur de la colonie %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+image(I); axis image
+input('Click with the mouse to select 2 points defining the colonie width ');
+
+[x_branch, y_branch] = ginput(2);  % Click 2 points on the image
+
+% Calculate the distance between each pair of consecutive points
+width_colony = sqrt(((x_branch(2) - x_branch(1))*scale_x)^2 + ((y_branch(2) - y_branch(1))*scale_y)^2);  % Distance between point 1 and point 2
+
+pause
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Appliquer un fond uniforme%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+background = imopen(image_recadreng,strel('disk',strel_size));
+%background = mean(image_recadreng,'all')*ones(size(image_recadreng),'like',image_recadreng);
+imshow(background)
+pause
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Enlever fond de l'image originale%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+I2 = image_recadreng - background;
+%I2 = image_recadreng
+%imshow(I2)
+%pause
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Augmenter le contraste%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+I3 = imadjust(I2,[0 gray_level],[0 1],3);
+%imshow(I3)
+%pause
+
+imagelist2 = {imadjust(I2,[0 0.10],[0 1],3) imadjust(I2,[0 0.2],[0 1],3) imadjust(I2,[0 0.5],[0 1],3) I3};
+%%imagelist2 = {imadjust(I2,[0 0.4],[0 1],3) imadjust(I2,[0 0.5],[0 1],3) imadjust(I2,[0 0.6],[0 1],3) I3};
+figure
+montage(imagelist2)
+
+pause
+
+gray_level_chosen = input('Select one gray scale (tl = 0.10 / tr = 0.20 / bl = 0.50 / br = default ): ');
+I3 = imadjust(I2,[0 gray_level_chosen],[0 1],3);
+I3_darker = imadjust(I2,[0 gray_level_chosen+0.05],[0 1],3);
+if(gray_level_chosen-0.05 < 0.01)
+    I3_lighter = imadjust(I2,[0 0.01],[0 1],3);
+else
+I3_lighter = imadjust(I2,[0 gray_level_chosen-0.05],[0 1],3);
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Mettre en niveau de gris%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+level = graythresh(I3);
+level_darker = graythresh(I3_darker);
+level_lighter = graythresh(I3_lighter);
+
+I4 = im2bw(I3,level);
+I4_darker = im2bw(I3_darker,level_darker);
+I4_lighter = im2bw(I3_lighter,level_lighter);
+
+%imshow(I4)
+pause
+I5 = bwareaopen(I4,taille_min,connectivite);
+I5_darker = bwareaopen(I4_darker,taille_min,connectivite);
+I5_lighter = bwareaopen(I4_lighter,taille_min,connectivite);
+
+                                                              
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Identifier les objets%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+[label_gray_scale,num1] = bwlabel(I5,connectivite);
+[label_darker,num2] = bwlabel(I5_darker,connectivite);
+[label_lighter,num3] = bwlabel(I5_lighter,connectivite);
+
+rgb2 = label2rgb(bwlabel(label_gray_scale,connectivite), 'spring', 'c', 'shuffle');
+rgb2_darker = label2rgb(bwlabel(label_darker,connectivite), 'spring', 'c', 'shuffle');
+rgb2_lighter = label2rgb(bwlabel(label_lighter,connectivite), 'spring', 'c', 'shuffle');
+
+imagelist3 = {rgb2_darker rgb2 rgb2_lighter I};
+figure
+montage(imagelist3)
+
+pause
+
+label_chosen = input('Choose one (1,2,3) : ');
+
+if(label_chosen==1)
+label = label_darker;
+num = num2;
+imshow(rgb2_darker)
+gray_level_chosen = gray_level_chosen + 0.05
+elseif (label_chosen==3)
+label  = label_lighter;
+num = num3;
+imshow(rgb2_lighter)
+gray_level_chosen = gray_level_chosen - 0.05
+else 
+label = label_gray_scale;
+num = num1;
+imshow(rgb2)
+end 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% elimination des gros objets %%%%%%%%%%%%%%%%%%%%%%%%%%%
+s = regionprops(label, 'area');
+inter = cat(1, s.Area);
+surface_obj=sum(inter)*scale_x*scale_y
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% elimination des objets non voulus %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+erase_object = input('Do you need to erase object (yes:1, no:0) ? :');
+
+if(erase_object == 0)
+    surface_colony = surface_obj
+else
+    % Representation
+    label_nonzero = label;
+    label_nonzero(label_nonzero == 0) = NaN;
+    label_nonzero_rm = label_nonzero; % stockage des labels pour les modifier
+
+    y = linspace(1,size(label_nonzero,1),size(label_nonzero,1));
+    x = linspace(1,size(label_nonzero,2),size(label_nonzero,2));
+    [XX,YY]=meshgrid(x,y);
+    
+    erase_finish = 1;
+
+    while erase_finish == 1
+        %% Si zone à retirer 
+        zone_delete = input('Is the zone a point (0) / or a rectangle (1) ?:');
+        
+        if zone_delete == 1 
+            
+            % si zone non sur les bords :
+            figure()
+            surface(XX,YY ,label_nonzero);
+            input('Select one zone you want to delete (lower left then upper right corner)');
+            zone_blanche = ginput(2);
+            zone_blanche = floor(zone_blanche)
+            label_nonzero_rm(zone_blanche(1,2):zone_blanche(2,2),zone_blanche(1,1):zone_blanche(2,1)) = NaN;
+        
+        else 
+        % zone collée au bord :
+        figure()
+        surface(XX,YY ,label_nonzero);
+        input('Select one zone you want to delete (one point)');
+        zone_blanche = ginput(1);
+        zone_blanche = floor(zone_blanche)
+        size_label = size(label_nonzero);
+        
+            if zone_delete == 0 
+                %zone en bas
+                if(zone_blanche(1) < (size_label(2)-zone_blanche(1)))
+                    label_nonzero_rm(zone_blanche(2):size_label(1),1:zone_blanche(1)) = NaN;
+                else 
+                    label_nonzero_rm(zone_blanche(2):size_label(1),zone_blanche(1):size_label(2)) = NaN;
+                end
+            else 
+                % zone en haut
+                if(zone_blanche(1) < (size_label(2)-zone_blanche(1)))
+                    label_nonzero_rm(1:zone_blanche(2),1:zone_blanche(1)) = NaN;
+                else 
+                    label_nonzero_rm(1:zone_blanche(2),zone_blanche(1):size_label(2)) = NaN;
+                end
+            end
+        end
+
+        label_rm = label_nonzero_rm;
+        label_rm(isnan(label_rm)) = 0;
+        A_gorgone = regionprops(label_rm, 'area');
+        
+        % Visualisation
+        figure(); % figure sur le même plot
+        subplot(1,2,1);
+        surface(XX,YY ,label_nonzero);
+        subplot(1,2,2);
+        surface(XX,YY ,label_nonzero_rm);
+        
+        erase_finish = input('Is there other zone you want to delete ? (yes:1 no:0) :');
+    end
+    surface_colony = (sum([A_gorgone.Area]))*scale_x*scale_y % surface en m2
+end
+
+%%% Mesures 
+height_colony
+height_from_substrate_colony
+width_colony
