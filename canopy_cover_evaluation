@@ -1,6 +1,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Extract marine animal forest cover from planar picture
 %%%% written by Nolwenn PAGES - LECOB - January 2025
+%%%% adapted from an original code of Katell GUIZIEN
 %%%% modified - April 2025
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 %%%% chemin : path to access the directory containing the series of calibrated pictures
